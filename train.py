@@ -18,9 +18,11 @@ def train(args, model, train_loader, valid_loader, criterion):
     for epoch in range(args.epochs):
         model.train()
         total_loss = 0
-        total_cls = 0
-        total_rec = 0
-        total_adv = 0
+        total_asc = 0
+        total_psm = 0
+        total_src = 0
+        total_cpd = 0
+        total_asa = 0
         
         start_time = time.time()
         
@@ -32,15 +34,15 @@ def train(args, model, train_loader, valid_loader, criterion):
             # Forward
             # pred_tls, pred_tun, rec_tls, rec_tun, pred_adv_tls, pred_adv_tun
             outputs = model(X)
-            pred_tls, pred_tun, rec_tls, rec_tun, pred_adv_tls, pred_adv_tun = outputs
+            pred_tls, pred_tun, rec_tls, rec_tun, rec_cross_tls, rec_cross_tun, pred_adv_tls, pred_adv_tun, con_tls_hn, con_tun_hn, emb_tls, emb_tun = outputs
             
             # Loss
             # We need x_tls and x_tun for reconstruction loss
             x_tls = X[:, 0, :]
             x_tun = X[:, 1, :]
             
-            loss, loss_cls, loss_rec, loss_adv = criterion(
-                pred_tls, pred_tun, rec_tls, rec_tun, pred_adv_tls, pred_adv_tun, 
+            loss, loss_asc, loss_psm, loss_src, loss_cpd, loss_asa = criterion(
+                outputs,
                 y, x_tls, x_tun
             )
             
@@ -48,15 +50,20 @@ def train(args, model, train_loader, valid_loader, criterion):
             optimizer.step()
             
             total_loss += loss.item()
-            total_cls += loss_cls.item()
-            total_rec += loss_rec.item() if isinstance(loss_rec, torch.Tensor) else loss_rec
-            total_adv += loss_adv.item()
+            total_asc += loss_asc.item()
+            total_psm += loss_psm.item()
+            total_src += loss_src.item()
+            total_cpd += loss_cpd.item()
+            total_asa += loss_asa.item()
             
             if (i + 1) % 10 == 0 and args.verbose:
                 logging.info(f'Epoch [{epoch+1}/{args.epochs}], Step [{i+1}/{len(train_loader)}], '
-                             f'Loss: {loss.item():.4f}, Cls: {loss_cls.item():.4f}, '
-                             f'Rec: {loss_rec.item() if isinstance(loss_rec, torch.Tensor) else loss_rec:.4f}, '
-                             f'Adv: {loss_adv.item():.4f}')
+                             f'Loss: {loss.item():.4f}, '
+                             f'ASC: {loss_asc.item():.4f}, '
+                             f'PSM: {loss_psm.item():.4f}, '
+                             f'SRC: {loss_src.item():.4f}, '
+                             f'CPD: {loss_cpd.item():.4f}, '
+                             f'ASA: {loss_asa.item():.4f}')
         
         epoch_time = time.time() - start_time
         avg_loss = total_loss / len(train_loader)

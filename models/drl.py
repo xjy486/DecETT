@@ -147,8 +147,9 @@ class DRL(nn.Module):
     def __init__(self, args, max_packet_len=MAX_PACKET_LEN, emb_size=16, hidden_size=128, num_layers=2, dropout=0.2) -> None:
         super().__init__()
         self.max_packet_len = max_packet_len
-        self.max_num_pkts = args.max_num_pkts
-
+        self.seq_len = args.max_num_pkts
+        self.emb_size = emb_size
+        
         self.embedding = nn.Embedding(2*max_packet_len+1, emb_size)
         self.enc_con = Encoder_Content(emb_size, hidden_size, num_layers, dropout=dropout)
 
@@ -158,14 +159,14 @@ class DRL(nn.Module):
         self.dec = Decoder(hidden_size, num_layers, dropout=dropout)
 
         self.rec_tls = nn.Sequential(
-            nn.Linear(hidden_size*num_layers*2, hidden_size),
+            nn.Linear(hidden_size*num_layers*2, hidden_size), # 这里的 hidden_size*num_layers*2 取决于 decoder 输出
             nn.SELU(),
-            nn.Linear(hidden_size, 2*max_packet_len+1)
+            nn.Linear(hidden_size, self.seq_len * self.emb_size) # 投影回完整序列大小
         )
         self.rec_tun = nn.Sequential(
             nn.Linear(hidden_size*num_layers*2, hidden_size),
             nn.SELU(),
-            nn.Linear(hidden_size, 2*max_packet_len+1)
+            nn.Linear(hidden_size, self.seq_len * self.emb_size)
         )
 
         self.dense = nn.Sequential(
@@ -187,7 +188,7 @@ class DRL(nn.Module):
         emb_tls = self.embedding(x_tls + abs(self.max_packet_len))
         emb_tun = self.embedding(x_tun + abs(self.max_packet_len))
 
-        # Content Encoder
+        # Content Encoder(z^A)
         _, con_tls_hn, _, con_tun_hn = self.enc_con.forward(emb_tls, emb_tun)
 
         # Attribute Encoder
@@ -205,22 +206,40 @@ class DRL(nn.Module):
         pred_tun = self.classifier(features_tun)
 
         if self.training:
-            # Reconstruction
+            # 准备输入用于重构
             con_tls_hn_sq = con_tls_hn.unsqueeze(1)
-            attr_tls_hn_sq = attr_tls_hn.unsqueeze(1)
             con_tun_hn_sq = con_tun_hn.unsqueeze(1)
+            attr_tls_hn_sq = attr_tls_hn.unsqueeze(1)
             attr_tun_hn_sq = attr_tun_hn.unsqueeze(1)
-
+            # 1. 自重构 (SRC)
             rec_tls_feat, _ = self.dec(con_tls_hn_sq, attr_tls_hn_sq)
             rec_tun_feat, _ = self.dec(con_tun_hn_sq, attr_tun_hn_sq)
             
-            rec_tls = self.rec_tls(rec_tls_feat.squeeze(1))
-            rec_tun = self.rec_tun(rec_tun_feat.squeeze(1))
+            # [修改点 2]：将特征投影并 Reshape 为 (Batch, Seq_Len, Emb_Size)
+            rec_tls_out = self.rec_tls(rec_tls_feat.squeeze(1)) # (Batch, Seq_Len * Emb_Size)
+            rec_tls_out = rec_tls_out.view(-1, self.seq_len, self.emb_size)
+            
+            rec_tun_out = self.rec_tun(rec_tun_feat.squeeze(1))
+            rec_tun_out = rec_tun_out.view(-1, self.seq_len, self.emb_size)
 
-            # Adversarial (Reverse App)
+            # 2. 交叉重构 (CPD) - 既然修了就顺便把交叉部分也加上
+            rec_cross_tls_feat, _ = self.dec(con_tun_hn_sq, attr_tls_hn_sq) 
+            rec_cross_tls_out = self.rec_tls(rec_cross_tls_feat.squeeze(1)).view(-1, self.seq_len, self.emb_size)
+
+            rec_cross_tun_feat, _ = self.dec(con_tls_hn_sq, attr_tun_hn_sq)
+            rec_cross_tun_out = self.rec_tun(rec_cross_tun_feat.squeeze(1)).view(-1, self.seq_len, self.emb_size)
+
+            # Adversarial (不变)
             pred_adv_tls = self.classifier_reverse_app(attr_tls_hn)
             pred_adv_tun = self.classifier_reverse_app(attr_tun_hn)
 
-            return pred_tls, pred_tun, rec_tls, rec_tun, pred_adv_tls, pred_adv_tun
+            # [修改点 3]：必须返回原始的 emb_tls/tun 作为 Loss 的 Target
+            # 同时返回 con_hn 用于 ASA Loss
+            return (pred_tls, pred_tun, 
+                    rec_tls_out, rec_tun_out, 
+                    rec_cross_tls_out, rec_cross_tun_out,
+                    pred_adv_tls, pred_adv_tun, 
+                    con_tls_hn, con_tun_hn,
+                    emb_tls, emb_tun) # 新增返回
 
         return pred_tls, pred_tun

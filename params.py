@@ -22,7 +22,7 @@ def arg_parser():
     
     parser.add_argument('--feature', type=str, default='', help='feature extraction method')
     parser.add_argument('--min_num_pkts', type=int, default=1, help='min_pkt_len')
-    parser.add_argument('--max_num_pkts', type=int, default=1000, help='max_pkt_len')
+    parser.add_argument('--max_num_pkts', type=int, default=200, help='max_pkt_len')
     parser.add_argument('--valid_ratio', type=float, default=0, help='valid ratio')
     parser.add_argument('--test_ratio', type=float, default=1., help='test ratio')
     parser.add_argument('--max_size', type=int, default=0, help='max_size')
