@@ -87,6 +87,17 @@ class DatasetProcessor:
         '''
 
         X_indices = np.arange(len(X))
+        
+        if valid_ratio + test_ratio == 0:
+            X_train = X
+            X_valid, X_test = [], []
+            y_train = y
+            y_valid, y_test = [], []
+            S_train = S
+            S_valid, S_test = [], []
+            
+            return X_train, X_valid, X_test, y_train, y_valid, y_test, S_train, S_valid, S_test
+
         X_train, X_test, y_train, y_test = train_test_split(X_indices, y, test_size=valid_ratio+test_ratio, random_state=random_seed, stratify=y)
         valid_ratio = valid_ratio / (valid_ratio + test_ratio)
         if valid_ratio == 0.:
@@ -241,6 +252,14 @@ class DatasetProcessor_DRL(DatasetProcessor):
             return [], [], X, [], [], y, [], [], []
 
         X_indices = np.arange(len(X))
+        
+        if valid_ratio + test_ratio == 0:
+            X_train = X
+            X_valid, X_test = [], []
+            y_train = y
+            y_valid, y_test = [], []
+            return X_train, X_valid, X_test, y_train, y_valid, y_test, [], [], []
+
         X_train, X_test, y_train, y_test = train_test_split(X_indices, y, test_size=valid_ratio+test_ratio, random_state=random_seed, stratify=y)
         
         valid_ratio = valid_ratio / (valid_ratio + test_ratio)

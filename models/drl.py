@@ -89,7 +89,8 @@ class Encoder_Attr(nn.Module):
         
     def forward(self, x):
         attr_output, attr_hn = self.encoder_x(x)
-        attr_output = self.linear(attr_output)
+        attr_hn = self.linear(attr_hn) # Apply linear to the hidden state
+        attr_output = self.linear(attr_output) # Apply linear to the output sequence
 
         return attr_output, attr_hn
 
@@ -97,7 +98,7 @@ class Encoder_Attr(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, hidden_size, num_layers, dropout=0.2):
         super().__init__()
-        self.decoder = BiGRU(hidden_size*num_layers*2*2, hidden_size, num_layers, dropout=dropout)
+        self.decoder = BiGRU(hidden_size * num_layers * 3, hidden_size, num_layers, dropout=dropout)
 
     def forward(self, content_hn, attr_hn):
         concat = torch.cat([content_hn, attr_hn], dim=2)
@@ -186,7 +187,12 @@ class DRL(nn.Module):
         emb_tls = self.embedding(x_tls + abs(self.max_packet_len))
         emb_tun = self.embedding(x_tun + abs(self.max_packet_len))
 
+        # Content Encoder
         _, con_tls_hn, _, con_tun_hn = self.enc_con.forward(emb_tls, emb_tun)
+
+        # Attribute Encoder
+        attr_tls, attr_tls_hn = self.enc_attr_tls(emb_tls)
+        attr_tun, attr_tun_hn = self.enc_attr_tun(emb_tun)
 
         features_tls = torch.cat([con_tls_hn, con_tls_hn], dim=1)
         features_tun = torch.cat([con_tun_hn, con_tun_hn], dim=1)
@@ -194,8 +200,27 @@ class DRL(nn.Module):
         features_tls = self.dense(features_tls)
         features_tun = self.dense(features_tun)
         
+        # Classification
         pred_tls = self.classifier(features_tls)
         pred_tun = self.classifier(features_tun)
 
-        
+        if self.training:
+            # Reconstruction
+            con_tls_hn_sq = con_tls_hn.unsqueeze(1)
+            attr_tls_hn_sq = attr_tls_hn.unsqueeze(1)
+            con_tun_hn_sq = con_tun_hn.unsqueeze(1)
+            attr_tun_hn_sq = attr_tun_hn.unsqueeze(1)
+
+            rec_tls_feat, _ = self.dec(con_tls_hn_sq, attr_tls_hn_sq)
+            rec_tun_feat, _ = self.dec(con_tun_hn_sq, attr_tun_hn_sq)
+            
+            rec_tls = self.rec_tls(rec_tls_feat.squeeze(1))
+            rec_tun = self.rec_tun(rec_tun_feat.squeeze(1))
+
+            # Adversarial (Reverse App)
+            pred_adv_tls = self.classifier_reverse_app(attr_tls_hn)
+            pred_adv_tun = self.classifier_reverse_app(attr_tun_hn)
+
+            return pred_tls, pred_tun, rec_tls, rec_tun, pred_adv_tls, pred_adv_tun
+
         return pred_tls, pred_tun

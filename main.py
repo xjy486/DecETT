@@ -1,5 +1,7 @@
 # encoding:utf-8
 import os
+# encoding:utf-8
+import os
 import time
 
 import torch
@@ -8,9 +10,11 @@ from torch.utils.data import DataLoader
 
 from eval import eval_results
 from test import test
+from train import train
 from params import arg_parser
 from dataset import Dataset, DatasetProcessor_DRL
 from features import seq_features
+from models.loss import DecETT_Loss
 
 MAX_PACKET_LEN = 3000
 
@@ -78,6 +82,25 @@ if __name__ == "__main__":
 
 
     logging.info(f'Split data success!')
+
+    if args.mode == 'train':
+        logging.info('----------- Training -----------')
+        
+        # Initialize Model
+        from models.drl import DRL
+        model = DRL(args).to(args.device)
+        
+        # Initialize Loss
+        criterion = DecETT_Loss(args).to(args.device)
+        
+        # DataLoaders
+        train_loader = DataLoader(dataset=Dataset(X_train, y_train), batch_size=args.batch_size, shuffle=True, num_workers=0)
+        valid_loader = DataLoader(dataset=Dataset(X_valid, y_valid), batch_size=args.batch_size, shuffle=False, num_workers=0) if len(X_valid) > 0 else None
+        
+        # Train
+        train(args, model, train_loader, valid_loader, criterion)
+        
+        logging.info('Training finished.')
 
     if args.mode == '' or args.mode == 'test':
         logging.info('----------- Testing -----------')
