@@ -23,3 +23,8 @@
 
 ## Results
 📂The evaluation results can be found in `saved_results`. We provide an evaluation result in `saved_results/24-10-21_16-16-45_DRL_v2ray_corr_test` as an example.
+
+## how to train
+```
+python main.py --mode train --dataset v2ray_corr --model DRL --epochs 100 --batch_size 64 --device cuda:0 --verbose --recon_loss --class_num 54 --label app_label --model_file test_model.pkl --max_packet_len 3000 --min_num_pkts 3 --max_num_pkts 200 --lr 0.001 --loss DRLLoss_GRL --valid_ratio 0.2 --test_ratio 0.2
+```
